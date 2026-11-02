@@ -1,0 +1,26 @@
+{
+  "name": "day-ledger",
+  "version": "1.1.0",
+  "private": true,
+  "description": "Personal time and project tracker that runs in the browser and syncs through a OneDrive folder.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "start": "npm run build && node scripts/serve.mjs",
+    "test": "npm run build && node tests/e2e.mjs"
+  },
+  "dependencies": {
+    "@fontsource/ibm-plex-sans": "5.3.0",
+    "chart.js": "4.6.1",
+    "jspdf": "4.2.1",
+    "jspdf-autotable": "5.0.9",
+    "xlsx": "0.18.5"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}
