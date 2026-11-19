@@ -13,6 +13,7 @@ A personal time and project tracker that runs in the browser. Log everything you
 - **Breaks handled for you:** a break inside a task comes off that task's time. Only real clashes raise a prompt.
 - **Projects, tasks and sub-tasks:** with automatic project IDs, keyword matching and progress bars.
 - **Dashboard:** task status, time spent, planned vs actual, logging streak and a focus timer.
+- **Reminders:** a morning and a night notification to log your day. Tap one to open the day and fill its gaps.
 - **All entries:** filter, sort and group, export to CSV, Excel or PDF, and import CSV or Excel.
 - **Works everywhere:** phone and laptop layouts, dark and light modes, and offline use.
 - **Reporting periods:** ISO calendar weeks and April to March financial years.
@@ -21,7 +22,7 @@ A personal time and project tracker that runs in the browser. Log everything you
 
 Entries are stored in your browser, not in this repository and not on any server. To share them between devices, you choose a folder and the app writes its save files there. A OneDrive folder lets OneDrive carry those files, as described in the [setup guide](docs/SETUP.md).
 
-The app makes no network requests for your data, and the page has no accounts, analytics or trackers.
+The app makes no network requests for your data, and the page has no accounts, analytics or trackers. Reminders come from a scheduled GitHub workflow through the browser's own push service, and they carry no entries. See [Reminders](docs/SETUP.md#reminders).
 
 ## Getting started
 

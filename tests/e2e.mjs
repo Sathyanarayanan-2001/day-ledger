@@ -8,7 +8,8 @@ const URL = 'http://localhost:8123/';
 const OUT = 'test-output';
 mkdirSync(OUT, { recursive: true });
 const server = await serve();
-const browser = await chromium.launch();
+// Full Chromium in headless mode: the lighter headless shell can't show notifications.
+const browser = await chromium.launch({ channel: 'chromium' });
 const context = await browser.newContext({ viewport: { width: 1280, height: 900 }, acceptDownloads: true });
 const page = await context.newPage();
 const errors = [];
@@ -156,6 +157,46 @@ await test('page reloads offline', async () => {
   await context.setOffline(true); await page.reload();
   await page.waitForSelector('.nav');
   await context.setOffline(false);
+});
+
+await test('a reminder push shows a notification', async () => {
+  await context.grantPermissions(['notifications'], { origin: URL });
+  const cdp = await context.newCDPSession(page);
+  const regs = [];
+  cdp.on('ServiceWorker.workerRegistrationUpdated', e => regs.push(...e.registrations));
+  await cdp.send('ServiceWorker.enable');
+  await page.waitForTimeout(200);
+  const reg = regs.find(r => r.scopeURL === URL && !r.isDeleted);
+  assert.ok(reg, 'service worker registration');
+  const shown = () => page.evaluate(async () => (await (await navigator.serviceWorker.ready).getNotifications()).map(n => [n.title, n.tag, n.actions.map(a => a.action).join()]));
+  await cdp.send('ServiceWorker.deliverPushMessage', { origin: URL.slice(0, -1), registrationId: reg.registrationId, data: JSON.stringify({ kind: 'morning' }) });
+  await cdp.send('ServiceWorker.deliverPushMessage', { origin: URL.slice(0, -1), registrationId: reg.registrationId, data: JSON.stringify({ kind: 'night', pauseIn: 4, pauseUrl: 'https://github.com/x/y/pulls' }) });
+  await page.waitForTimeout(400);
+  const n = await shown();
+  assert.deepEqual(n.find(x => x[1] === 'reminder-morning'), ['Morning check-in', 'reminder-morning', 'today,yesterday']);
+  assert.deepEqual(n.find(x => x[1] === 'reminder-night'), ['Log today before you sleep', 'reminder-night', 'today']);
+  assert.equal(n.find(x => x[1] === 'reminder-pause')?.[0], 'Reminders pause in 4 days');
+  await page.evaluate(() => TT.Push.test());
+  await page.waitForTimeout(300);
+  assert.ok((await shown()).some(x => x[0] === 'Test reminder'));
+  await cdp.detach();
+});
+
+await test('reminder links open the right day', async () => {
+  const r = await page.evaluate(async () => {
+    const wait = () => new Promise(f => setTimeout(f, 150)), out = {};
+    location.hash = 'log/yesterday'; await wait(); out.y = [TT.UI.page, TT.UI.date === addDays(today(), -1), location.hash];
+    navigator.serviceWorker.dispatchEvent(new MessageEvent('message', { data: { open: 'log/today' } })); await wait(); out.t = [TT.UI.page, TT.UI.date === today(), location.hash];
+    location.hash = 'log/2026-10-05'; await wait(); out.d = TT.UI.date;
+    return out;
+  });
+  assert.deepEqual(r, { y: ['log', true, '#log'], t: ['log', true, '#log'], d: '2026-10-05' });
+});
+
+await test('settings shows reminders for this device', async () => {
+  await go(page, 'settings', 500);
+  assert.ok((await page.textContent('#app')).includes('Reminders'));
+  assert.ok(await page.isVisible('[data-act=pushOn]'), 'Turn on button');
 });
 
 const shots = [['home', 'home'], ['dash', 'dashboard'], ['log', 'log-time'], ['guide', 'guide']];

@@ -10,7 +10,8 @@ Day ledger is a static single-page app with no backend.
 | `src/sync.js` | IndexedDB storage and folder sync. |
 | `src/app.js` | Pages, dialogs, charts, exports and the focus timer. |
 | `src/app.css` | Styles and light and dark themes. |
-| `src/sw.js` | Service worker: network first, cached page offline. |
+| `src/sw.js` | Service worker: network first, cached page offline. Shows reminders and opens the day when one is tapped. |
+| `scripts/remind.mjs` | Sends a reminder push to each device. Run by `.github/workflows/reminders.yml`. |
 
 ## Data model
 
@@ -37,6 +38,15 @@ Every record has an update time `u`. Deletions are kept as tombstones so they ca
 - A file that can't be read yet is skipped and tried again, because sync apps can deliver files partway through.
 
 Browsers can't reliably finish writing a file while a tab closes, so saving happens about 3 seconds after each change.
+
+## Reminders
+
+The app has no server, so a scheduled GitHub workflow stands in for one.
+
+- On each device, Settings subscribes to Web Push with the public key `PUSH_KEY`. The subscription, called the device key in the app, is saved as a `PUSH_SUB_*` repository secret.
+- Twice a day `scripts/remind.mjs` signs with the `VAPID_PRIVATE_KEY` secret and pushes `{ "kind": "morning" }` or `{ "kind": "night" }` to every device. It fails the run if a device has expired, so GitHub emails about it.
+- The service worker turns the kind into a notification. A tap opens `#log/today` or `#log/yesterday`, and the app then shows plain `#log` on that date.
+- When the last commit is 50 or more days old, the night push also carries `pauseIn`, and the service worker shows a warning. GitHub stops scheduled runs in public repositories after 60 days without activity.
 
 ## Build
 

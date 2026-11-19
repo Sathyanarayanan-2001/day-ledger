@@ -2,6 +2,19 @@
 
 Notable changes to this project. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-11-19
+
+### Added
+
+- Morning and night reminders to log your day, sent by a scheduled GitHub workflow. Set up in Settings > Reminders.
+- Reminder taps open today, or yesterday from the morning reminder's Fill yesterday button.
+- Links straight to a day: `#log/today`, `#log/yesterday` or `#log/2026-11-18`.
+- A warning before GitHub pauses the reminders after 60 days with no commits.
+
+### Changed
+
+- Browser tests run on full Chromium in headless mode, so notifications can be tested.
+
 ## [1.1.0] - 2026-11-02
 
 ### Added
