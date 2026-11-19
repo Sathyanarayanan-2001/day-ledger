@@ -1,6 +1,6 @@
 {
   "name": "day-ledger",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Personal time and project tracker that runs in the browser and syncs through a OneDrive folder.",
   "license": "MIT",
@@ -21,6 +21,7 @@
     "xlsx": "0.18.5"
   },
   "devDependencies": {
-    "playwright": "1.64.1"
+    "playwright": "1.64.1",
+    "web-push": "4.0.0"
   }
 }

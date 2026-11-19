@@ -487,6 +487,62 @@ function syncLabel() {
   return m[Sync.state] || '';
 }
 const timeAgo = t => { const s = (Date.now() - t) / 1000; return s < 60 ? 'just now' : s < 3600 ? `${Math.floor(s / 60)} min ago` : new Date(t).toLocaleString(); };
+
+/* ---------- reminders ---------- */
+/* .github/workflows/reminders.yml pushes a morning and a night reminder to every device saved as a
+   PUSH_SUB_* secret. This is the public half of the key pair; the private half is the VAPID_PRIVATE_KEY secret. */
+const PUSH_KEY = 'BNgzE6IdZ8m1W5xlR2LpOF2yMR-JDIDazsQuX2wXOoesax7iFWKj2WKN00XJvKCqvTcrKDSzDG0NZKhDlMLUNzM';
+const REPO = 'https://github.com/Sathyanarayanan-2001/day-ledger';
+const b64u = s => Uint8Array.from(atob(s.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+const Push = {
+  st: { state: 'checking' },
+  supported: () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window,
+  reg: () => navigator.serviceWorker.getRegistration(),
+  async sub() { const r = await this.reg(); return r ? r.pushManager.getSubscription() : null; },
+  async refresh() {
+    let st = { state: 'unsupported' };
+    try {
+      if (this.supported() && Notification.permission === 'denied') st = { state: 'blocked' };
+      else if (this.supported()) {
+        const s = await this.sub(), saved = lsGet('pushSaved', null);
+        st = s ? { state: 'on', key: JSON.stringify(s), saved: saved === s.endpoint } : { state: 'off', lost: !!saved };
+      }
+    } catch {}
+    const changed = JSON.stringify(st) !== JSON.stringify(this.st); this.st = st;
+    if (changed && UI.page === 'settings') render();
+    return st;
+  },
+  async on() {
+    if (await Notification.requestPermission() !== 'granted') { toast('Notifications are not allowed for this site'); return this.refresh(); }
+    const r = await this.reg(); if (!r) { toast('Open the installed app to turn on reminders'); return; }
+    try { await r.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(PUSH_KEY) }); toast('Reminders on. Now add this device to GitHub.'); } catch (e) { toast(`Could not turn on reminders: ${e.message}`); }
+    return this.refresh();
+  },
+  async off() { const s = await this.sub(); if (s) await s.unsubscribe(); lsSet('pushSaved', null); toast("Reminders off here. Delete this device's secret on GitHub too."); return this.refresh(); },
+  async copy() { const s = await this.sub(); if (!s) return; try { await navigator.clipboard.writeText(JSON.stringify(s)); toast('Device key copied'); } catch { $('#pushKey')?.select(); toast('Select the key and copy it'); } },
+  async saved() { const s = await this.sub(); if (s) lsSet('pushSaved', s.endpoint); toast('Done. Reminders will arrive on this device.'); return this.refresh(); },
+  async test() { const r = await this.reg(); r?.active?.postMessage({ remind: { kind: 'test' } }); },
+};
+function remindersPanel() {
+  const st = Push.st, s = st.state;
+  const name = `PUSH_SUB_${/Android|iPhone|iPad/i.test(navigator.userAgent) ? 'PHONE' : 'LAPTOP'}`;
+  const ext = (href, text, cls = '') => `<a ${cls ? `class="${cls}"` : ''} href="${REPO}${href}" target="_blank" rel="noopener">${text}</a>`;
+  const off = '<button class="btn ghost danger" data-act="pushOff">Turn off</button>';
+  const body = {
+    checking: '<p class="small sub">Checking this device.</p>',
+    unsupported: `<p class="small sub">This browser can't receive reminders. Use Chrome on Android, or Chrome or Edge on a laptop.</p>`,
+    blocked: `<p class="small sub">Notifications are blocked for this site. Allow them in the browser's site settings, then come back here.</p>`,
+    off: `<p class="small sub" style="margin-bottom:10px">${st.lost ? 'This device has lost its reminder key. Turn reminders on again and replace its secret on GitHub.' : 'Off on this device.'}</p><button class="btn pri" data-act="pushOn">Turn on for this device</button>`,
+    on: st.saved ? `<p class="small sub" style="margin-bottom:10px">On for this device. A reminder comes each morning and night.</p>
+      <div class="row wrap"><button class="btn" data-act="pushTest">Send a test</button>${ext('/actions/workflows/reminders.yml', 'Run from GitHub', 'btn')}<button class="btn" data-act="pushShow">Show device key</button>${off}</div>`
+      : `<p class="small" style="margin-bottom:8px"><b>One more step:</b> GitHub needs this device's key to reach it.</p>
+      <ol class="steps small"><li>Copy the key below.</li><li>Open ${ext('/settings/secrets/actions/new', 'New repository secret')} on GitHub.</li><li>Name it <code>${name}</code>, paste the key and save. Give each device its own name, such as <code>PUSH_SUB_LAPTOP2</code>.</li><li>Come back and tap I've added it.</li></ol>
+      <textarea readonly id="pushKey" rows="3" aria-label="Device key" style="margin:10px 0;font-size:12px">${esc(st.key)}</textarea>
+      <div class="row wrap"><button class="btn pri" data-act="pushCopy">Copy key</button><button class="btn" data-act="pushSaved">I've added it</button><button class="btn" data-act="pushTest">Send a test</button>${off}</div>`,
+  }[s];
+  return `<section class="panel"><h2>Reminders</h2>${body}<p class="small muted" style="margin-top:10px">Tap a reminder to open the day and fill its gaps. Reminders carry no entries. <a href="#guide">Times and setup</a></p></section>`;
+}
+
 function pageSettings() {
   const connected = lsGet('syncMode', null) === 'folder';
   const cats = live('categories').sort((a, b) => a.order - b.order); const set = lsGet('pomo', { focus: 25, brk: 5, long: 15 });
@@ -496,6 +552,7 @@ function pageSettings() {
     ${Folder.supported() ? `<div class="row wrap">${connected ? `<button class="btn" data-act="syncNow">Save now</button><button class="btn" data-act="syncPull">Load latest</button><button class="btn" data-act="pickFolder">Change folder</button><button class="btn danger" data-act="syncStop">Disconnect folder</button>` : `<button class="btn pri" data-act="pickFolder">Choose sync folder</button>`}</div>` : `<p class="small sub">This browser can't use a folder. Use Chrome or Edge, or move data with a backup file below.</p>`}
     <p class="small muted" style="margin-top:10px">Saves about 3 seconds after each change and keeps the last 3 sessions. Edits from different devices merge by entry, newest edit wins. <a href="#guide">How to set this up</a></p>
   </section>
+  ${remindersPanel()}
   <section class="panel"><h2>Backup and restore</h2><div class="row wrap"><button class="btn" data-act="backup">Download backup</button><button class="btn" data-act="restore">Restore from backup</button><button class="btn" data-act="sample">${live('logs').some(l => l.sample) ? 'Remove sample data' : 'Load sample data'}</button></div></section>
   <section class="panel"><h2>Categories</h2><p class="small muted" style="margin-bottom:8px">"Inside tasks" items, like breaks, are deducted from the task they fall within instead of raising a clash.</p>
     <div class="tablewrap"><table><thead><tr><th>Name</th><th>Colour</th><th>Type</th><th>Inside tasks</th><th>No project</th><th></th></tr></thead><tbody>
@@ -520,6 +577,9 @@ function pageGuide() {
     <p class="small muted" style="margin-top:10px">Test it: log one entry on the phone, wait for the sync app, then open the page on a laptop.</p></section>
   <section class="panel"><h2>Quick log</h2><p class="sub small" style="margin-bottom:8px">Type one line and check the preview under the box before you press Log.</p>
     <div class="tablewrap"><table class="plain"><tbody>${ex.map(([a, b]) => `<tr><td><code>${a}</code></td><td class="sub">${b}</td></tr>`).join('')}</tbody></table></div></section>
+  <section class="panel"><h2>Daily reminders</h2><p class="sub small" style="margin-bottom:10px">A notification at about 8:00 in the morning and 10:30 at night, India time, reminds you to log. Tap it to open today, or Fill yesterday in the morning one.</p>
+    <ol class="steps"><li>Open the installed app on the device. In <a href="#settings">Settings</a>, under Reminders, tap Turn on for this device and allow notifications.</li><li>Copy the device key into a new GitHub secret, as the steps there show.</li><li>Tap Send a test to check the device shows it.</li></ol>
+    <p class="small muted" style="margin-top:10px">GitHub can run a few minutes late at busy times. It warns you before it pauses reminders after 60 days with no commits.</p></section>
   <section class="panel"><h2>Missed a day, week or month?</h2><p class="sub">Open <a href="#log">Log time</a> and pick the date. Hatched parts of the strip are unlogged, and each gap has a Fill button. On the <a href="#dash">Dashboard</a>, tap any pale day in the logging grid to jump to it.</p></section>
   <section class="panel"><h2>How time is counted</h2><ul class="steps">
     <li>Breaks, meals and restroom entries can sit inside a task. Their minutes come off that task automatically.</li>
@@ -721,6 +781,7 @@ function render() {
   window.scrollTo(0, y); paintSync(); drawDash();
   const ht = $('.heat'); if (ht) ht.scrollLeft = ht.scrollWidth;
   const pg = $('#pgrid'); if (pg && innerWidth < 980) pg.style.gridTemplateColumns = 'minmax(0,1fr)';
+  if (UI.page === 'settings') Push.refresh();
 }
 function paintSync() {
   const cls = { ok: 'ok', error: 'err', reconnect: 'wait', pending: 'wait', working: 'wait' }[Sync.state] || '';
@@ -767,6 +828,8 @@ const actions = {
   addCat: () => { const n = live('categories').length; const id = uid(); put('categories', { id, name: 'New category', slot: 8, kind: 'personal', nest: false, noProject: true, keywords: '', order: n + 1 }); commit(); },
   delCat: el => { if (live('logs').some(l => l.category === el.dataset.id)) { toast('This category has entries. Rename it instead.'); return; } rm('categories', el.dataset.id); commit(); },
   notif: () => Notification.requestPermission().then(p => toast(p === 'granted' ? 'Notifications on' : 'Notifications not allowed')),
+  pushOn: () => Push.on(), pushOff: () => Push.off(), pushCopy: () => Push.copy(), pushSaved: () => Push.saved(), pushTest: () => Push.test(),
+  pushShow: () => { lsSet('pushSaved', null); Push.refresh(); },
 };
 function pickFile(accept, fn) { const i = document.createElement('input'); i.type = 'file'; i.accept = accept; i.onchange = () => i.files[0] && fn(i.files[0]); i.click(); }
 function refreshPreview() { const p = $('#quickPrev'), f = $('form[data-form=quick]'); if (p && f) p.innerHTML = quickPreview(f.dataset.base); }
@@ -793,7 +856,13 @@ document.addEventListener('change', e => {
   if (ds.pomo) { const p = lsGet('pomo', { focus: 25, brk: 5, long: 15 }); p[ds.pomo] = Math.max(1, +t.value || 1); lsSet('pomo', p); }
   if (t.id === 'pomoLog') lsSet('pomoLog', t.checked);
 });
-function route() { if (!location.hash && !lsGet('seenGuide', false) && !live('logs').length) { lsSet('seenGuide', true); location.replace('#guide'); return; } const h = location.hash.slice(1); UI.page = PAGES.some(p => p[0] === h) ? h : 'home'; render(); window.scrollTo(0, 0); }
+function route() {
+  if (!location.hash && !lsGet('seenGuide', false) && !live('logs').length) { lsSet('seenGuide', true); location.replace('#guide'); return; }
+  const [h, day] = location.hash.slice(1).split('/');
+  /* Reminders open #log/today or #log/yesterday; a date such as #log/2026-11-18 works too. */
+  if (h === 'log' && day) { UI.date = day === 'yesterday' ? addDays(today(), -1) : /^\d{4}-\d\d-\d\d$/.test(day) ? day : today(); history.replaceState(null, '', '#log'); }
+  UI.page = PAGES.some(p => p[0] === h) ? h : 'home'; render(); window.scrollTo(0, 0);
+}
 addEventListener('hashchange', route);
 let rzT, lastW = innerWidth; addEventListener('resize', () => { if (innerWidth === lastW) return; lastW = innerWidth; clearTimeout(rzT); rzT = setTimeout(() => { if (!document.activeElement?.matches('input,textarea,select')) render(); }, 200); });
 
@@ -806,8 +875,15 @@ async function boot() {
   route(); Timer.paint(); setInterval(() => Timer.tick(), 1000);
   setInterval(() => { if (UI.page === 'home' && !document.activeElement?.matches('input')) { const n = $('.strip .now'); if (n) { const x = new Date(); n.style.left = ((x.getHours() * 60 + x.getMinutes()) / 14.4) + '%'; } } }, 60000);
   await Sync.start().catch(e => Sync.fail(e));
-  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    navigator.serviceWorker.addEventListener('message', e => { if (e.data?.open) location.hash = e.data.open; });
+    navigator.serviceWorker.startMessages?.();
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+    if (Push.supported()) navigator.serviceWorker.ready.then(() => Push.refresh()).then(st => {
+      if (lsGet('pushSaved', null) && !(st.state === 'on' && st.saved)) toast('Reminders need setting up again on this device. See Settings.');
+    });
+  }
 }
-Object.assign(TT, { UI, actions, Sync, Folder, saveEntry, sampleData, commit, exportNow, importFile, Timer, ledRows, Store, render, resolveQuick });
+Object.assign(TT, { UI, actions, Sync, Folder, saveEntry, sampleData, commit, exportNow, importFile, Timer, ledRows, Store, render, resolveQuick, Push });
 window.TT = TT;
 boot();

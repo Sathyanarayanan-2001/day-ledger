@@ -8,6 +8,8 @@ Please report security problems through [private vulnerability reporting](https:
 
 Entries stay in your browser and the folder you choose. The folder's protection is whatever your device and OneDrive provide, and save files aren't encrypted.
 
+Reminders carry no entries. Device keys and the reminder private key live in GitHub repository secrets. Never put them in a file in this public repository.
+
 ## Known issue
 
 `xlsx` 0.18.5, the latest version on npm, has known advisories for crafted spreadsheets (GHSA-4r6h-8v6p-xvw6 and GHSA-5pgg-2g8v-p4x9). The fixed versions are published only on SheetJS's own site. The risk is limited because the app only opens files you choose, so import spreadsheets only from sources you trust.

@@ -1,0 +1,40 @@
+name: Reminders
+
+# Pushes the morning and night "log your day" reminders to every device saved as a
+# PUSH_SUB_* secret. Setup and changing the times: docs/SETUP.md, "Reminders".
+#
+# Cron times are UTC; India is UTC+5:30. GitHub often starts scheduled runs a few
+# minutes late, so these are set just before the hour you want:
+#   25 2  -> 07:55 IST, arrives about 8:00 am
+#   55 16 -> 22:25 IST, arrives about 10:30 pm
+on:
+  schedule:
+    - cron: '25 2 * * *'
+    - cron: '55 16 * * *'
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: Reminder to send
+        type: choice
+        options: [test, morning, night]
+        default: test
+
+permissions:
+  contents: read
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: node scripts/remind.mjs "$KIND"
+        env:
+          KIND: ${{ inputs.kind }}
+          VAPID_PRIVATE_KEY: ${{ secrets.VAPID_PRIVATE_KEY }}
+          SECRETS: ${{ toJSON(secrets) }}
